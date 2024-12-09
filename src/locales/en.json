@@ -1,0 +1,48 @@
+{
+    "profile": {
+        "run": "Run",
+        "debug": "Debug",
+        "coverage": "Coverage"
+    },
+    "test": {
+        "noResults": "No test results found",
+        "failed": "Test failed",
+        "noOutput": "No output from test execution"
+    },
+    "command": {
+        "noCodeceptConfig": "Codecept command is not configured",
+        "noRunConfig": "{0} command is not configured",
+        "executionError": "Error executing command: {0}",
+        "testCompleted": "Test run completed",
+        "testFailed": "Test run failed",
+        "testStarted": "Running tests..."
+    },
+    "coverage": {
+        "fileNotFound": "Coverage file not found: {0}",
+        "notAFile": "Coverage path is not a file: {0}",
+        "fileEmpty": "Coverage file is empty",
+        "invalidFormat": "Invalid coverage file format",
+        "loadError": "Failed to load coverage data: {0}",
+        "thresholdNotMet": "Coverage is at {0}, which is below the threshold of {1}",
+        "reportNotFound": "Coverage report not found at {0}",
+        "reportTitle": "Coverage Report",
+        "generating": "Generating coverage report...",
+        "initialLoad": "Initial Coverage",
+        "results": "Coverage Results",
+        "description": "Coverage: {0}%",
+        "processError": "Error processing coverage: {0}"
+    },
+    "error": {
+        "configNotFound": "No codeception.yml found in workspace",
+        "invalidConfig": "Invalid codeception configuration",
+        "parseError": "Error parsing test file: {0}",
+        "fileNotFound": "File not found: {0}",
+        "invalidPath": "Invalid path: {0}",
+        "timeout": "Operation timed out: {0}"
+    },
+    "loading": {
+        "analyzing": "Analyzing test files...",
+        "discovering": "Discovering test files...",
+        "updating": "Updating test explorer..."
+    }
+}
