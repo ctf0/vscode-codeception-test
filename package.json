@@ -1,0 +1,142 @@
+{
+    "name": "vscode-codeception-test",
+    "displayName": "Codeception Test Explorer",
+    "description": "Test explorer for Codeception PHP testing framework",
+    "version": "0.0.1",
+    "author": "ctf0",
+    "repository": "https://github.com/ctf0/vscode-codeception-test",
+    "icon": "img/icon.png",
+    "engines": {
+        "vscode": "^1.90.0"
+    },
+    "categories": [
+        "Testing"
+    ],
+    "activationEvents": [
+        "workspaceContains:codeception.yml",
+        "workspaceContains:codeception.yaml",
+        "workspaceContains:*/codeception.yml",
+        "workspaceContains:*/codeception.yaml"
+    ],
+    "main": "./out/main",
+    "contributes": {
+        "commands": [],
+        "configuration": {
+            "title": "Codeception Test Explorer",
+            "properties": {
+                "codeception.testFilePattern": {
+                    "type": "string",
+                    "default": "**/*{Cest,Test}.php",
+                    "description": "Glob pattern to match test files"
+                },
+                "codeception.codecept": {
+                    "type": "string",
+                    "default": "vendor/bin/codecept",
+                    "description": "Path to Codeception binary (relative to workspace folder or absolute path)"
+                },
+                "codeception.args.additional": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "--no-colors",
+                        "--report"
+                    ],
+                    "required": [
+                        "--no-colors",
+                        "--report"
+                    ],
+                    "description": "Additional arguments to pass to Codeception"
+                },
+                "codeception.args.debug": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "--debug"
+                    ],
+                    "description": "Arguments to pass when running tests in debug mode"
+                },
+                "codeception.args.coverage": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "--coverage",
+                        "--coverage-xml"
+                    ],
+                    "description": "Arguments to pass when running tests with coverage"
+                },
+                "codeception.args.run": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Arguments to pass to the 'run' command (e.g., '-g' for specific groups)"
+                },
+                "codeception.command.default": {
+                    "type": "string",
+                    "default": "php",
+                    "description": "Command to execute tests (e.g., 'php', 'docker exec container-name', or 'docker compose exec service-name')"
+                },
+                "codeception.command.debug": {
+                    "type": "string",
+                    "default": "php",
+                    "description": "Command to execute tests in debug mode (e.g., 'php', 'docker exec container-name', or 'docker compose exec service-name')"
+                },
+                "codeception.useNearestConfigFile": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Use nearest config file instead of the root config file"
+                },
+                "codeception.env": {
+                    "type": "object",
+                    "default": {},
+                    "markdownDescription": "Environment variables to set when running tests, e.g. `{'XDEBUG_MODE': 'coverage'}`",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "codeception.coverage.htmlFilePath": {
+                    "type": "string",
+                    "default": "tests/_output/coverage/index.html",
+                    "description": "Path to coverage html reports (relative to workspace folder)"
+                },
+                "codeception.coverage.xmlFilePath": {
+                    "type": "string",
+                    "default": "tests/_output/coverage.xml",
+                    "description": "Path to coverage xml reports (relative to workspace folder)"
+                },
+                "codeception.pathMapping": {
+                    "type": "object",
+                    "default": {},
+                    "markdownDescription": "remote to local path mapping, ex.`{\"/data\": \"${workspaceFolder}\"}`"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run esbuild-base -- --pure:console.log --minify",
+        "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node",
+        "esbuild": "npm run esbuild-base -- --sourcemap",
+        "esbuild-watch": "npm run esbuild-base -- --sourcemap --watch",
+        "watch": "npm run esbuild"
+    },
+    "devDependencies": {
+        "@types/node": "^22.10.1",
+        "@types/vscode": "^1.90.0",
+        "esbuild": "^0.24.0",
+        "typescript": "^5.7.2"
+    },
+    "dependencies": {
+        "execa": "^9.5.2",
+        "fast-xml-parser": "^4.5.0",
+        "find-up": "^7.0.0",
+        "php-parser": "^3.2.1",
+        "yaml": "^2.6.1"
+    }
+}
