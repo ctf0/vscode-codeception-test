@@ -1,6 +1,7 @@
 import { Engine } from 'php-parser';
-import { TestClass, TestMethod } from './types';
 import * as vscode from 'vscode';
+import { TestClass, TestMethod } from './types';
+const DocParser = require('doc-parser');
 
 export class PhpTestParser {
     private parser: Engine;
@@ -8,13 +9,13 @@ export class PhpTestParser {
     constructor() {
         this.parser = new Engine({
             parser: {
-                extractDoc: true,
-                locations: true,
-                php7: true
+                extractDoc : true,
+                locations  : true,
+                php7       : true,
             },
             ast: {
-                withPositions: true
-            }
+                withPositions: true,
+            },
         });
     }
 
@@ -24,6 +25,7 @@ export class PhpTestParser {
         try {
             const ast = this.parser.parseCode(content, 'test.php');
             const classNode = this.findFirstClassNode(ast);
+
             if (!classNode) return null;
 
             const parsedClass = this.parseClassNode(classNode, ast);
@@ -32,21 +34,22 @@ export class PhpTestParser {
             return testClass;
         } catch (error) {
             console.error('Error parsing test file:', error);
+
             return null;
         }
     }
 
     public async findTestFiles(testPaths: string[]): Promise<vscode.Uri[]> {
         const files: vscode.Uri[] = [];
-        
+
         for (const testPath of testPaths) {
             // Search for test files in each test path
             const pathFiles = await vscode.workspace.findFiles(
                 new vscode.RelativePattern(
                     vscode.workspace.workspaceFolders![0],
-                    `${testPath}/**/*{Cest,Test}.php`
+                    `${testPath}/**/*{Cest,Test}.php`,
                 ),
-                '**/vendor/**'
+                '**/vendor/**',
             );
             files.push(...pathFiles);
         }
@@ -56,11 +59,12 @@ export class PhpTestParser {
 
     public async parseTestFiles(files: vscode.Uri[]): Promise<TestClass[]> {
         const testClasses: TestClass[] = [];
-        
+
         for (const file of files) {
             try {
                 const content = await vscode.workspace.fs.readFile(file);
                 const testClass = await this.parseTestFile(content.toString());
+
                 if (testClass) {
                     testClass.uri = file;
                     testClasses.push(testClass);
@@ -120,6 +124,7 @@ export class PhpTestParser {
 
     private isTestClass(className: string): boolean {
         className = className.toLowerCase();
+
         return className.endsWith('test') || className.endsWith('cest');
     }
 
@@ -130,8 +135,8 @@ export class PhpTestParser {
 
         // Check if this is a test method (starts with 'test' or has @test annotation)
         const methodName = node.name.name;
-        const hasTestAnnotation = node.leadingComments?.some((comment: any) => 
-            comment.value.includes('@test')
+        const hasTestAnnotation = node.leadingComments?.some((comment: any) =>
+            comment.value.includes('@test'),
         );
 
         if (!methodName.startsWith('test') && !hasTestAnnotation) {
@@ -144,20 +149,22 @@ export class PhpTestParser {
         }
 
         return {
-            name: methodName,
-            startLine: node.loc.start.line - 1,
-            endLine: node.loc.end.line - 1,
-            docblock: node.leadingComments?.[0]?.value ? 
-                this.parseDocBlock(node.leadingComments[0].value) : 
-                undefined
+            name      : methodName,
+            startLine : node.loc.start.line - 1,
+            endLine   : node.loc.end.line - 1,
+            docblock  : node.leadingComments?.[0]?.value ?
+                this.parseDocBlock(node.leadingComments[0].value) :
+                undefined,
         };
     }
 
     private parseMethodNodes(classNode: any): TestMethod[] {
         const methods: TestMethod[] = [];
+
         if (classNode.body) {
             for (const item of classNode.body) {
                 const method = this.parseMethodNode(item);
+
                 if (method) {
                     methods.push(method);
                 }
@@ -174,30 +181,33 @@ export class PhpTestParser {
         const namespace = this.findNamespace(ast);
         const fullName = namespace ? `${namespace}\\${className}` : className;
         const methods = this.parseMethodNodes(classNode);
-        const docblock = classNode.leadingComments?.[0]?.value;
+
+        const docblock = classNode.leadingComments?.[0]?.value ?
+            this.parseDocBlock(classNode.leadingComments[0].value) :
+            undefined;
 
         return {
-            name: className,
+            name      : className,
             fullName,
             methods,
-            startLine: classNode.loc.start.line - 1,
-            endLine: classNode.loc.end.line - 1,
+            startLine : classNode.loc.start.line - 1,
+            endLine   : classNode.loc.end.line - 1,
             docblock,
-            uri: vscode.Uri.file(''), // This will be set later when parsing files
-            suite: undefined // This will be set based on configuration
+            tags      : docblock?.body
+                .filter((item: any) => item.kind === 'block' && item.name === 'group')
+                .map((item: any) => item.options[0].value)
+                || [],
+            uri   : vscode.Uri.file(''), // This will be set later when parsing files
+            suite : undefined, // This will be set based on configuration
         };
     }
 
-    private parseDocBlock(docblock: string): string {
-        if (!docblock) return '';
+    private parseDocBlock(docblock: string): any {
+        if (!docblock) return undefined;
 
-        return docblock
-            .replace(/^\/\*\*/, '')
-            .replace(/\*\/$/, '')
-            .split('\n')
-            .map(line => line.replace(/^\s*\*\s?/, ''))
-            .filter(line => line.trim() !== '')
-            .join('\n');
+        const reader = new DocParser();
+
+        return reader.parse(docblock);
     }
 }
 

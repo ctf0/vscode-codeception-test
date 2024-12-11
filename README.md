@@ -8,6 +8,7 @@ Test explorer for Codeception PHP testing framework.
 - Support for multiple test suites
 - Automatic test discovery
 - Support for custom Codeception configurations
+- Nearest config file detection
 
 ## Coverage Features
 
@@ -45,17 +46,6 @@ The extension provides comprehensive code coverage support:
    - PCOV or PHPDBG can also be used as alternatives
    - When using Docker, ensure your container has the necessary extensions
 
-4. **Environment Variables**
-   For coverage to work with Xdebug, you need to set the appropriate mode:
-
-   ```json
-   {
-       "codeception.env": {
-           "XDEBUG_MODE": "coverage"
-       }
-   }
-   ```
-
 ## Extension Settings
 
 This extension contributes the following settings:
@@ -63,16 +53,18 @@ This extension contributes the following settings:
 | Setting                            | Type       | Default                             | Description                                                                                                              |
 | ---------------------------------- | ---------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `codeception.testFilePattern`      | `string`   | `**/*{Cest,Test}.php`               | Glob pattern to match test files                                                                                         |
+| `codeception.configFilePattern`    | `string`   | `**/codeception*.{yml,yaml}`        | Glob pattern to match Codeception configuration files                                                                    |
 | `codeception.codecept`             | `string`   | `vendor/bin/codecept`               | Path to Codeception binary (relative to workspace folder or absolute path)                                               |
 | `codeception.args.additional`      | `string[]` | `["--no-colors", "--report"]`       | Additional arguments to pass to Codeception. Note: `--no-colors` and `--report` are required and will always be included |
 | `codeception.args.debug`           | `string[]` | `["--debug"]`                       | Arguments to pass when running tests in debug mode                                                                       |
 | `codeception.args.coverage`        | `string[]` | `["--coverage", "--coverage-html"]` | Arguments to pass when running tests with coverage                                                                       |
 | `codeception.args.run`             | `string[]` | `[]`                                | Arguments to pass to the 'run' command (e.g., '-g' for specific groups)                                                  |
-| `codeception.command`              | `string`   | `php`                               | Command to execute tests (e.g., 'php', 'docker exec container-name', or 'docker compose exec service-name')              |
-| `codeception.debugCommand`         | `string`   | `php`                               | Command to execute tests in debug mode                                                                                   |
+| `codeception.command.default`      | `string`   | `php`                               | Command to execute tests (e.g., 'php', 'docker exec container-name', or 'docker compose exec service-name')              |
+| `codeception.command.debug`        | `string`   | `php`                               | Command to execute tests in debug mode                                                                                   |
 | `codeception.useNearestConfigFile` | `boolean`  | `false`                             | Use nearest config file instead of the root config file                                                                  |
-| `codeception.env`                  | `object`   | `{}`                                | Environment variables to set when running tests, e.g. `{"XDEBUG_MODE": "coverage"}`                                      |
-| `codeception.coverageHtmlFilePath` | `string`   | `tests/_output/coverage/index.html` | Path to store coverage reports (relative to workspace folder)                                                            |
+| `codeception.coverageHtmlFilePath` | `string`   | `tests/_output/coverage/index.html` | Path to store HTML coverage reports (relative to workspace folder)                                                       |
+| `codeception.coverageXmlFilePath`  | `string`   | `tests/_output/coverage.xml`        | Path to store XML coverage reports (relative to workspace folder)                                                        |
+| `codeception.pathMapping`          | `object`   | `{}`                                | Remote to local path mapping for coverage reports                                                                        |
 
 ## Configuration Examples
 
@@ -82,7 +74,7 @@ This extension contributes the following settings:
 {
     "codeception.testFilePattern": "**/*{Cest,Test}.php",
     "codeception.codecept": "vendor/bin/codecept",
-    "codeception.additionalArgs": [
+    "codeception.args.additional": [
         "--no-colors",
         "--report",
         "--other-arg"
@@ -95,11 +87,8 @@ This extension contributes the following settings:
 ```json
 {
     "codeception.command": "docker exec my-container",
-    "codeception.debugCommand": "docker exec -e XDEBUG_MODE=debug my-container",
-    "codeception.env": {
-        "XDEBUG_MODE": "coverage"
-    },
-    "codeception.additionalArgs": [
+    "codeception.debugCommand": "docker exec my-container",
+    "codeception.args.additional": [
         "--no-colors",
         "--report",
         "-c",
@@ -108,11 +97,22 @@ This extension contributes the following settings:
 }
 ```
 
+### Path Mapping for Remote Execution
+
+```json
+{
+    "codeception.pathMapping": {
+        "/var/www/html": "${workspaceFolder}"
+    }
+}
+```
+
 ### Custom Coverage Path
 
 ```json
 {
-    "codeception.coverageHtmlFilePath": "custom/path/to/coverage"
+    "codeception.coverageHtmlFilePath": "custom/path/to/coverage/index.html",
+    "codeception.coverageXmlFilePath": "custom/path/to/coverage.xml"
 }
 ```
 
@@ -130,9 +130,10 @@ settings:
 - Coverage reports require Xdebug to be installed and properly configured
 - When using Docker, make sure your container has the necessary PHP extensions installed
 - The extension will automatically detect and use your project's `codeception.yml` configuration
+- When `useNearestConfigFile` is enabled, the extension will search for the nearest config file relative to the test file
 
 ### Command Structure Notes
 
-- The actual command structure is: `[ENV_VARS] [COMMAND] [CODECEPT_PATH] RUN [RUN_ARGS] [TEST[:METHOD]] [DEBUG_ARGS] [COVERAGE_ARGS] [ADDITIONAL_ARGS]`
-- Debug mode uses `debugCommand` instead of `command` when running tests with `debug` or `coverage`
-- If you specify `-c` or `-config` in `additionalArgs`, the automatic config file path will be skipped
+- The actual command structure is: `[COMMAND] [CODECEPT_PATH] RUN [RUN_ARGS] [TEST[:METHOD]] [DEBUG_ARGS] [COVERAGE_ARGS] [ADDITIONAL_ARGS] [-c CONFIG_PATH]`
+- Debug mode uses `command.debug` instead of `command.default` when running tests with `debug` or `coverage`
+- Config file path is always added last to ensure proper precedence

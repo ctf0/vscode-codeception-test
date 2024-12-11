@@ -5,8 +5,12 @@ export enum CodeceptionConfigFile {
     YAML = 'codeception.yaml'
 }
 
-export interface CodeceptionConfig {
+/**
+ * VS Code extension settings
+ */
+export interface ExtensionConfig {
     testFilePattern: string;
+    configFilePattern: string;
     codecept: string;
     additionalArgs: string[];
     debugArgs: string[];
@@ -14,16 +18,16 @@ export interface CodeceptionConfig {
     runArgs: string[];
     command: string;
     debugCommand: string;
-    envVars: Record<string, string>;
-    configFile?: string;  // Path to codeception.yml file if found
     coverageHtmlFilePath: string;
     coverageXmlFilePath: string;
+    viewMode: string;
     pathMapping: Record<string, string>;
+    useNearestConfigFile: boolean;
 }
 
 export interface TestMethod {
     name: string;
-    docblock?: string;
+    docblock?: any;
     startLine: number;
     endLine: number;
     testItem?: vscode.TestItem;
@@ -33,6 +37,7 @@ export interface TestClass {
     name: string;
     fullName: string;  // Full class name with namespace
     methods: TestMethod[];
+    tags: string[];
     uri: vscode.Uri;
     suite?: string;
     startLine: number;
@@ -42,7 +47,10 @@ export interface TestClass {
     configFile?: string;
 }
 
-export interface CodeceptConfig {
+/**
+ * Codeception YAML file format
+ */
+export interface CodeceptionYamlConfig {
     paths?: {
         tests?: string;
         output?: string;

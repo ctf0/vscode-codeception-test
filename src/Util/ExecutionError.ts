@@ -1,5 +1,13 @@
 import { ExecaError } from 'execa';
 
+export interface TestStatus {
+    successful: number;
+    failed: number;
+    incomplete: number;
+    skipped: number;
+    useless: number;
+}
+
 export class ExecutionError extends Error {
     constructor(
         message: string,
@@ -49,8 +57,14 @@ export class ExecutionError extends Error {
         return status.failed > 0 || this.stderr.includes('XDEBUG') || this.exitCode === 1;
     }
 
-    public parseTestStatus(): { successful: number; failed: number; incomplete: number; skipped: number; useless: number } {
-        const defaultStatus = { successful: 0, failed: 0, incomplete: 0, skipped: 0, useless: 0 };
+    public parseTestStatus(): TestStatus {
+        const defaultStatus: TestStatus = {
+            successful : 0,
+            failed     : 0,
+            incomplete : 0,
+            skipped    : 0,
+            useless    : 0,
+        };
 
         // Find the line containing test results
         const resultLine = this.stdout.split('\n').find((line) => line.includes('Successful:'));

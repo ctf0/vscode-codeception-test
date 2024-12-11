@@ -1,17 +1,14 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import * as vscode from 'vscode';
-import { CodeceptConfigReader } from '../Config/codeceptConfig';
-import { ConfigurationService } from '../Service/Config/ConfigurationService';
 import { CodeceptionCoverageProvider } from '../Coverage/coverageProvider';
 import { TestData } from '../Model/testData';
-import { PhpTestParser } from '../Service/parser';
-import { TestExecutor } from '../Service/TestExecutor';
-import { TestRunner } from '../Service/TestRunner';
+import { CodeceptConfigReader } from '../Service/Config/CodeceptConfigReader';
+import { ConfigurationService } from '../Service/Config/ConfigurationService';
+import PhpTestParser from '../Service/parser';
 import { TestProfileManager } from '../Service/TestProfileManager';
+import { TestRunner } from '../Service/TestRunner';
 import { TestClass } from '../Service/types';
 
-export class CodeceptionTestController {
+export class CodeceptionTestController implements vscode.Disposable {
     private testData: TestData = new TestData();
     private parser: PhpTestParser;
     private configReader: CodeceptConfigReader;
@@ -22,7 +19,10 @@ export class CodeceptionTestController {
     private outputChannel: vscode.OutputChannel;
     private coverageProvider: CodeceptionCoverageProvider;
     private testRunner: TestRunner;
-    private testProfileManager: TestProfileManager;
+    private configService: ConfigurationService;
+    private suiteGroups = new Map<string, vscode.TestItem>();
+    private pathGroups = new Map<string, vscode.TestItem>();
+    private currentView: string = 'suites';
 
     constructor(private workspaceFolder: vscode.WorkspaceFolder) {
         this.testController = vscode.tests.createTestController('codeception', 'Codeception');
@@ -30,31 +30,42 @@ export class CodeceptionTestController {
         this.parser = new PhpTestParser();
         this.outputChannel = vscode.window.createOutputChannel('Codeception Tests');
         this.coverageProvider = new CodeceptionCoverageProvider(workspaceFolder);
-        
+        this.configService = ConfigurationService.getInstance();
+        this.currentView = this.configService.getConfig().viewMode;
+
         // Initialize services
         this.testRunner = new TestRunner(
             this.testController,
             this.testData,
-            workspaceFolder,
+            this.workspaceFolder,
             this.outputChannel,
-            this.coverageProvider
+            this.coverageProvider,
         );
-        this.testProfileManager = new TestProfileManager(this.testController, this.testRunner);
+
+        new TestProfileManager(this.testController, this.testRunner);
 
         this.setupFileWatcher();
 
         this.disposables.push(
             this.testController,
             this.outputChannel,
-            vscode.workspace.onDidChangeTextDocument(e => this.onDocumentChanged(e)),
+            vscode.workspace.onDidChangeTextDocument((e) => this.onDocumentChanged(e.document)),
             vscode.workspace.onDidCreateFiles(() => this.scheduleRefresh()),
             vscode.workspace.onDidDeleteFiles(() => this.scheduleRefresh()),
             vscode.workspace.onDidRenameFiles(() => this.scheduleRefresh()),
+            vscode.workspace.onDidChangeConfiguration(e => {
+                if (e.affectsConfiguration('codeception.viewMode')) {
+                    this.currentView = this.configService.getConfig().viewMode;
+
+                    this.updateTestExplorerView();
+                }
+            })
         );
 
-        this.testController.resolveHandler = async test => {
+        this.testController.resolveHandler = async (test) => {
             if (!test) {
                 await this.discoverAllTests();
+
                 return;
             }
             await this.resolveTestItem(test);
@@ -64,114 +75,177 @@ export class CodeceptionTestController {
     }
 
     private setupFileWatcher() {
-        this.fileWatcher?.dispose();
+        const pattern = this.configService.getConfig().testFilePattern;
         this.fileWatcher = vscode.workspace.createFileSystemWatcher(
-            new vscode.RelativePattern(this.workspaceFolder, '**/*{Cest,Test}.php'),
-            false,
-            false,
-            false
+            new vscode.RelativePattern(this.workspaceFolder, pattern),
         );
 
-        this.fileWatcher.onDidChange(() => this.scheduleRefresh());
-        this.fileWatcher.onDidCreate(() => this.scheduleRefresh());
-        this.fileWatcher.onDidDelete(() => this.scheduleRefresh());
+        this.fileWatcher.onDidChange(() => this.loadTestFiles());
+        this.fileWatcher.onDidCreate(() => this.loadTestFiles());
+        this.fileWatcher.onDidDelete(() => this.loadTestFiles());
 
         this.disposables.push(this.fileWatcher);
     }
 
-    private async refreshTestItems() {
-        const testFiles = await vscode.workspace.findFiles(
-            new vscode.RelativePattern(this.workspaceFolder, '**/*{Cest,Test}.php'),
-            '**/vendor/**'
-        );
+    private async loadTestFiles() {
+        try {
+            // Get test paths from config files
+            const testPaths = await this.configReader.getTestPaths();
+            const files = await this.parser.findTestFiles(testPaths);
+            const testClasses = await this.parser.parseTestFiles(files);
 
-        const items: TestClass[] = [];
-        for (const file of testFiles) {
-            try {
-                const content = await vscode.workspace.fs.readFile(file);
-                const testClass = await this.parser.parseTestFile(content.toString());
-                if (testClass) {
-                    testClass.uri = file;
-                    items.push(testClass);
+            // Clear existing tests
+            this.testData.clear();
+            this.suiteGroups.clear();
+            this.pathGroups.clear();
+
+            // Create test items for each class and method
+            for (const testClass of testClasses) {
+                // Get nearest config file for this test class
+                const nearestConfig = await this.configReader.findNearestConfig(testClass.uri.fsPath);
+
+                if (nearestConfig) {
+                    testClass.configFile = nearestConfig.path;
                 }
-            } catch (error) {
-                console.error(`Error parsing file ${file.fsPath}:`, error);
+
+                // Find the suite for this test class
+                const relativePath = vscode.workspace.asRelativePath(testClass.uri);
+                const suiteName = this.findSuiteForPath(relativePath, nearestConfig?.config.suites || {});
+
+                // Get or create suite group
+                let suiteGroup = this.suiteGroups.get(suiteName);
+
+                if (!suiteGroup) {
+                    suiteGroup = this.testController.createTestItem(
+                        `suite:${suiteName}`,
+                        `$(folder) ${suiteName}`,
+                        undefined,
+                    );
+                    this.suiteGroups.set(suiteName, suiteGroup);
+                }
+
+                // Create test item
+                const testItem = this.createTestItem(testClass);
+
+                // Add to suite group
+                suiteGroup.children.add(testItem);
+
+                // Add to path groups
+                const pathParts = relativePath.split('/');
+                let currentPath = '';
+                let parentGroup: vscode.TestItem | undefined;
+
+                // Create/get groups for each path segment
+                for (let i = 0; i < pathParts.length - 1; i++) {
+                    const part = pathParts[i];
+                    currentPath = currentPath ? `${currentPath}/${part}` : part;
+
+                    let pathGroup = this.pathGroups.get(currentPath);
+                    if (!pathGroup) {
+                        pathGroup = this.testController.createTestItem(
+                            `path:${currentPath}`,
+                            `$(folder) ${part}`,
+                            undefined,
+                        );
+                        this.pathGroups.set(currentPath, pathGroup);
+
+                        // Add to parent group if exists
+                        if (parentGroup) {
+                            parentGroup.children.add(pathGroup);
+                        }
+                    }
+
+                    parentGroup = pathGroup;
+                }
+
+                // Add test item to its directory group
+                if (parentGroup) {
+                    const linkedItem = this.testController.createTestItem(
+                        `${testItem.id}:${currentPath}`,
+                        testItem.label,
+                        testItem.uri,
+                    );
+                    linkedItem.range = testItem.range;
+                    linkedItem.canResolveChildren = true;
+
+                    parentGroup.children.add(linkedItem);
+                }
+            }
+
+            // Update the view based on current selection
+            this.updateTestExplorerView();
+        } catch (error) {
+            console.error('Error loading test files:', error);
+        }
+    }
+
+    private findSuiteForPath(filePath: string, suites: Record<string, { path?: string }>): string {
+        let matchedSuite = 'default';
+        let longestMatch = '';
+
+        for (const [suite, { path }] of Object.entries(suites)) {
+            if (!path) continue;
+
+            const normalizedPath = path.replace(/^\.\//, '').replace(/\\/g, '/');
+            const normalizedFile = filePath.replace(/\\/g, '/');
+
+            if (normalizedFile.startsWith(normalizedPath) && normalizedPath.length > longestMatch.length) {
+                longestMatch = normalizedPath;
+                matchedSuite = suite;
             }
         }
 
-        // Group items by suite
-        const groupedItems = await this.createSuiteGroupedItems(items);
-        this.testController.items.replace(groupedItems);
+        return matchedSuite;
     }
 
-    private async createSuiteGroupedItems(items: TestClass[]): Promise<vscode.TestItem[]> {
-        const groups = new Map<string, vscode.TestItem>();
-        const configResult = await this.configReader.getConfig();
-        const suites = configResult?.suites || {};
-
-        // Helper function to find the most specific matching path
-        const findSuite = (filePath: string): string => {
-            let matchedSuite = 'default';
-            let longestMatch = '';
-
-            for (const [suite, { path }] of Object.entries(suites)) {
-                const normalizedPath = path.replace(/^\.\//, '').replace(/\\/g, '/');
-                const normalizedFile = filePath.replace(/\\/g, '/');
-
-                if (normalizedFile.startsWith(normalizedPath) && normalizedPath.length > longestMatch.length) {
-                    longestMatch = normalizedPath;
-                    matchedSuite = suite;
-                }
-            }
-
-            return matchedSuite;
-        };
-
-        // Group items by suite
-        for (const item of items) {
-            const relativePath = vscode.workspace.asRelativePath(item.uri);
-            const suiteName = findSuite(relativePath);
-
-            let groupItem = groups.get(suiteName);
-            if (!groupItem) {
-                groupItem = this.testController.createTestItem(
-                    `suite:${suiteName}`,
-                    suiteName,
-                    undefined
-                );
-                groupItem.description = 'Test Suite';
-                groups.set(suiteName, groupItem);
-            }
-
-            const testItem = this.createTestItem(item);
-            groupItem.children.add(testItem);
-        }
-
-        return Array.from(groups.values());
-    }
-
-    private createTestItem(item: TestClass): vscode.TestItem {
+    private createTestItem(testClass: TestClass): vscode.TestItem {
         const testItem = this.testController.createTestItem(
-            `test:${item.fullName}`,
-            `$(symbol-class) ${item.name}`,
-            item.uri
+            `test:${testClass.fullName}`,
+            `$(symbol-class) ${testClass.name}`,
+            testClass.uri,
         );
 
         testItem.canResolveChildren = true;
         testItem.range = new vscode.Range(
-            item.startLine,
+            testClass.startLine,
             0,
-            item.endLine,
-            0
+            testClass.endLine,
+            0,
         );
-        this.testData.setItem(testItem.id, item);
+
+        this.testData.setItem(testItem.id, testClass);
 
         return testItem;
     }
 
+    private createTestItems(testClass: TestClass) {
+        const testItem = this.createTestItem(testClass);
+
+        // Clear existing children
+        testItem.children.replace([]);
+
+        for (const method of testClass.methods) {
+            const testItemMethod = this.testController.createTestItem(
+                `${testClass.uri.fsPath}:${method.name}`,
+                `$(symbol-method) ${method.name}`,
+                testClass.uri,
+            );
+
+            testItemMethod.tags = [...(testItem.tags || [])];
+            testItemMethod.range = new vscode.Range(
+                method.startLine,
+                0,
+                method.endLine,
+                0,
+            );
+
+            testItem.children.add(testItemMethod);
+        }
+    }
+
     public async discoverAllTests() {
         try {
-            await this.refreshTestItems();
+            await this.loadTestFiles();
         } catch (error) {
             console.error('Error discovering tests:', error);
         }
@@ -197,7 +271,7 @@ export class CodeceptionTestController {
                 const testItem = this.testController.createTestItem(
                     `${test.uri.fsPath}:${method.name}`,
                     `$(symbol-method) ${method.name}`,
-                    test.uri
+                    test.uri,
                 );
 
                 testItem.tags = [...(test.tags || [])];
@@ -205,7 +279,7 @@ export class CodeceptionTestController {
                     method.startLine,
                     0,
                     method.endLine,
-                    0
+                    0,
                 );
 
                 test.children.add(testItem);
@@ -228,9 +302,21 @@ export class CodeceptionTestController {
         }, 500);
     }
 
-    private onDocumentChanged(e: vscode.TextDocumentChangeEvent): void {
-        if (e.document.uri.fsPath.endsWith('.php')) {
+    private onDocumentChanged(document: vscode.TextDocument): void {
+        if (document.uri.fsPath.endsWith('.php')) {
             this.scheduleRefresh();
+        }
+    }
+
+    private updateTestExplorerView() {
+        if (this.currentView === 'suites') {
+            this.testController.items.replace([...this.suiteGroups.values()]);
+        } else {
+            const topLevelGroups = Array.from(this.pathGroups.values()).filter(group => {
+                const groupPath = group.id.replace('path:', '');
+                return !groupPath.includes('/');
+            });
+            this.testController.items.replace(topLevelGroups);
         }
     }
 

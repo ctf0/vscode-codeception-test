@@ -35,6 +35,7 @@ export class TestData {
         for (const item of this.items.values()) {
             if (item.testItem) {
                 tests.push(item.testItem);
+
                 if (item.methods) {
                     for (const method of item.methods) {
                         if (method.testItem) {
@@ -44,28 +45,37 @@ export class TestData {
                 }
             }
         }
+
         return tests;
     }
 
     public getTestData(test: vscode.TestItem): { className: string; method?: string; configFile?: string } | undefined {
         const isMethodTest = test.id.includes(':') && !test.id.startsWith('test:');
-        const item = this.getItem(isMethodTest ? test.parent!.id : test.id);
+        const parentId = isMethodTest ? test.parent!.id : test.id;
+        const item = this.getItem(parentId);
         
         if (!item) {
             return undefined;
         }
 
         if (isMethodTest) {
+            const methodName = test.label.replace('$(symbol-method) ', '');
+            const method = item.methods.find(m => m.name === methodName);
+
+            if (!method) {
+                return undefined;
+            }
+
             return {
-                className: item.name,
-                method: test.label.replace('$(symbol-method) ', ''),
-                configFile: item.configFile
+                className  : item.name,
+                method     : methodName,
+                configFile : item.configFile,
             };
         }
 
         return {
-            className: item.name,
-            configFile: item.configFile
+            className  : item.name,
+            configFile : item.configFile,
         };
     }
 }

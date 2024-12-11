@@ -1,8 +1,9 @@
 import { execa } from 'execa';
 import * as vscode from 'vscode';
+import { ExecutionError } from '../Util/ExecutionError';
 import { ConfigurationService } from './Config/ConfigurationService';
 import { EnvironmentManager } from './Environment/EnvironmentManager';
-import { ExecutionError } from './Error/ExecutionError';
+import { PathResolver } from './Environment/PathResolver';
 
 export interface ExecutionResult {
     stdout: string;
@@ -10,41 +11,37 @@ export interface ExecutionResult {
 }
 
 export class TestExecutor {
-    private readonly configService: ConfigurationService;
     private readonly envManager: EnvironmentManager;
+    private readonly pathResolver: PathResolver;
 
-    constructor(private readonly workspaceFolder: vscode.WorkspaceFolder) {
-        this.configService = ConfigurationService.getInstance();
+    constructor(private readonly workspaceFolder: vscode.WorkspaceFolder, private readonly configService: ConfigurationService) {
         this.envManager = new EnvironmentManager(this.configService.getConfig());
+        this.pathResolver = PathResolver.getInstance();
     }
 
     public async executeCommand(command: string): Promise<ExecutionResult> {
         try {
-            // Split command into command and arguments
-            const [cmd, ...args] = command.split(' ');
+            // Split command into command and args
+            const [cmd, ...args] = this.pathResolver.resolvePath(command).split(' ');
 
             const { stdout, stderr } = await execa(cmd, args, {
                 cwd: this.workspaceFolder.uri.fsPath,
-                env: this.envManager.getCoverageEnvironment(),
+                env: this.envManager.getEnvironment(),
                 reject: false, // Don't reject on non-zero exit codes
-                all: true // Merge stdout and stderr
+                all: false, // Don't merge stdout and stderr
             });
 
             return {
                 stdout: stdout || '',
-                stderr: stderr || ''
+                stderr: stderr || '',
             };
         } catch (error) {
             const execError = ExecutionError.fromError(error, command);
-            
-            if (execError.isTestFailure()) {
-                return {
-                    stdout: execError.stdout,
-                    stderr: execError.stderr
-                };
-            }
 
-            throw execError;
+            return {
+                stdout: execError.stdout,
+                stderr: execError.stderr,
+            };
         }
     }
 }

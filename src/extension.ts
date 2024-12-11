@@ -1,19 +1,22 @@
 // extension.ts
 import * as vscode from 'vscode';
 import { CodeceptionTestController } from './Controller/testController';
+import { ConfigurationService } from './Service/Config/ConfigurationService';
 
 let testController: CodeceptionTestController | undefined;
 
-export function activate(_context: vscode.ExtensionContext) {
-    // Get the first workspace folder
-    const workspaceFolder = (vscode.workspace.workspaceFolders || [])[0];
-    if (!workspaceFolder) {
+export async function activate(context: vscode.ExtensionContext) {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+
+    if (!workspaceFolders) {
         vscode.window.showErrorMessage('No workspace folder found');
         return;
     }
 
-    // Create the test controller
-    testController = new CodeceptionTestController(workspaceFolder);
+    for (const workspaceFolder of workspaceFolders) {
+        testController = new CodeceptionTestController(workspaceFolder);
+        context.subscriptions.push(testController);
+    }
 }
 
 export function deactivate() {
@@ -21,4 +24,5 @@ export function deactivate() {
         testController.dispose();
         testController = undefined;
     }
+    ConfigurationService.getInstance().dispose();
 }

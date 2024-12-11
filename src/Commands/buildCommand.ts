@@ -1,68 +1,51 @@
+import * as path from 'path';
 import type * as vscode from 'vscode';
-import { getConfiguration } from '../Config/config';
+import { ConfigurationService } from '../Service/Config/ConfigurationService';
+import { PathResolver } from '../Service/Environment/PathResolver';
 import type { TestCommandData } from '../Service/types';
 
 export function buildCommand(
-    workspaceFolder: vscode.WorkspaceFolder,
+    configService: ConfigurationService,
     data: TestCommandData,
     debug = false,
-    coverage = false
+    coverage = false,
 ): string {
-    const config = getConfiguration();
-    const args: string[] = [];
+    const config = configService.getConfig();
+    const pathResolver = PathResolver.getInstance();
 
-    // Replace ${workspaceFolder} in command with actual path
-    let command = config.command.replace(/\${workspaceFolder}/g, workspaceFolder.uri.fsPath);
-    let debugCommand = config.debugCommand.replace(/\${workspaceFolder}/g, workspaceFolder.uri.fsPath);
-
-    const additionalArgs = config.additionalArgs;
-
-    args.push(config.codecept);
-    args.push('run');
-
-    // Add run arguments
-    if (config.runArgs.length > 0) {
-        args.push(...config.runArgs);
+    if (!config.codecept) {
+        throw new Error('Codecept command is not configured');
     }
 
-    // Add test class
-    if (data.className) {
-        // Add method if specified
-        if (data.method) {
-            args.push(`${data.className}:${data.method}`);
-        } else {
-            args.push(data.className);
-        }
+    // Always use debug command when coverage is enabled
+    const useDebugCommand = debug || coverage;
+    const baseCommand = useDebugCommand ? config.debugCommand : config.command;
+    if (!baseCommand) {
+        throw new Error(`${useDebugCommand ? 'Debug' : 'Run'} command is not configured`);
     }
 
-    // Add debug args if needed
-    if (debug) {
-        args.push(...config.debugArgs);
-    }
+    const args = [
+        config.codecept,
+        'run',
+        ...sanitizeArgs(config.runArgs),
+        ...(data.className ? [
+            data.method ? `${data.className}:${data.method}` : data.className
+        ] : []),
+        // Add debug args if either debug mode or coverage is enabled
+        ...(useDebugCommand ? sanitizeArgs(config.debugArgs) : []),
+        ...(coverage ? sanitizeArgs(config.coverageArgs) : []),
+        ...sanitizeArgs(config.additionalArgs),
+        ...(data.configFile ? [
+            '-c',
+            path.relative(pathResolver.getWorkspaceFolder()?.uri.fsPath || '', data.configFile)
+        ] : [])
+    ].filter(Boolean);
 
-    // Add coverage args if needed
-    if (coverage) {
-        args.push(...config.coverageArgs);
-    }
+    return `${pathResolver.resolvePath(baseCommand)} ${args.join(' ')}`;
+}
 
-    // Add additional arguments
-    if (additionalArgs.length > 0) {
-        args.push(...additionalArgs);
-    }
-
-    // Add config file if specified
-    if (data.configFile && !additionalArgs.includes('-c') && !additionalArgs.includes('--config')) {
-        args.push('-c', data.configFile);
-    }
-
-    // Format environment variables
-    const envVars = Object.entries(config.envVars)
-        .map(([key, value]) => `${key}=${value}`)
-        .join(' ');
-
-    const cmnd = `${(debug || coverage) ? debugCommand : command} ${args.join(' ')}`;
-
-    return envVars
-        ? `${envVars} ${cmnd}`
-        : `${cmnd}`;
+function sanitizeArgs(args: string[] | undefined): string[] {
+    if (!Array.isArray(args)) return [];
+    return args.filter(arg => typeof arg === 'string' && arg.trim().length > 0)
+        .map(arg => arg.trim());
 }

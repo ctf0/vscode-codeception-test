@@ -4,7 +4,7 @@ import { TestRunner } from './TestRunner';
 export class TestProfileManager {
     constructor(
         private readonly testController: vscode.TestController,
-        private readonly testRunner: TestRunner
+        private readonly testRunner: TestRunner,
     ) {
         this.setupProfiles();
     }
@@ -19,7 +19,7 @@ export class TestProfileManager {
             },
             true,
             undefined,
-            true
+            true,
         );
 
         // Create run profile for debugging tests
@@ -31,7 +31,7 @@ export class TestProfileManager {
             },
             true,
             undefined,
-            true
+            true,
         );
 
         // Create run profile for coverage tests
@@ -43,7 +43,7 @@ export class TestProfileManager {
             },
             true,
             undefined,
-            true
+            true,
         );
     }
 }

@@ -1,22 +1,26 @@
 import * as vscode from 'vscode';
-import { CodeceptionConfig } from '../types';
+import { ExtensionConfig } from '../types';
 
-export class ConfigurationService {
+export class ConfigurationService implements vscode.Disposable {
     private static instance: ConfigurationService;
-    private config: CodeceptionConfig;
+    private config: ExtensionConfig;
+    private disposables: vscode.Disposable[] = [];
+    private readonly configSection = 'codeception';
 
     private constructor() {
         this.config = this.loadConfiguration();
+        this.setupConfigWatcher();
     }
 
     public static getInstance(): ConfigurationService {
         if (!ConfigurationService.instance) {
             ConfigurationService.instance = new ConfigurationService();
         }
+
         return ConfigurationService.instance;
     }
 
-    public getConfig(): CodeceptionConfig {
+    public getConfig(): ExtensionConfig {
         return this.config;
     }
 
@@ -24,28 +28,40 @@ export class ConfigurationService {
         this.config = this.loadConfiguration();
     }
 
-    private loadConfiguration(): CodeceptionConfig {
-        const config = vscode.workspace.getConfiguration('codeception');
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        let codeceptPath = config.get<string>('codecept', 'vendor/bin/codecept');
+    public dispose(): void {
+        this.disposables.forEach((d) => d.dispose());
+        this.disposables = [];
+    }
 
-        if (workspaceFolder && codeceptPath.includes('${workspaceFolder}')) {
-            codeceptPath = codeceptPath.replace('${workspaceFolder}', workspaceFolder);
-        }
+    public get<T>(section: string, defaultValue?: T): T {
+        return vscode.workspace.getConfiguration(this.configSection).get<T>(section, defaultValue as T);
+    }
 
+    private setupConfigWatcher(): void {
+        const configWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
+            if (e.affectsConfiguration(this.configSection)) {
+                this.reload();
+            }
+        });
+        this.disposables.push(configWatcher);
+    }
+
+    private loadConfiguration(): ExtensionConfig {
         return {
-            testFilePattern: config.get<string>('testFilePattern', ''),
-            codecept: codeceptPath,
-            additionalArgs: config.get<string[]>('args.additional', []),
-            debugArgs: config.get<string[]>('args.debug', []),
-            coverageArgs: config.get<string[]>('args.coverage', []),
-            runArgs: config.get<string[]>('args.run', []),
-            command: config.get<string>('command.default', ''),
-            debugCommand: config.get<string>('command.debug', ''),
-            envVars: config.get<Record<string, string>>('env', {}),
-            coverageHtmlFilePath: config.get<string>('coverage.htmlFilePath', ''),
-            coverageXmlFilePath: config.get<string>('coverage.xmlFilePath', ''),
-            pathMapping: config.get<Record<string, string>>('pathMapping', {})
+            testFilePattern: this.get<string>('testFilePattern', ''),
+            configFilePattern: this.get<string>('configFilePattern', ''),
+            codecept: this.get<string>('codecept', ''),
+            additionalArgs: this.get<string[]>('args.additional', []),
+            debugArgs: this.get<string[]>('args.debug', []),
+            coverageArgs: this.get<string[]>('args.coverage', []),
+            runArgs: this.get<string[]>('args.run', []),
+            command: this.get<string>('command.default', ''),
+            debugCommand: this.get<string>('command.debug', ''),
+            coverageHtmlFilePath: this.get<string>('coverage.htmlFilePath', ''),
+            coverageXmlFilePath: this.get<string>('coverage.xmlFilePath', ''),
+            viewMode: this.get<string>('viewMode', ''),
+            useNearestConfigFile: this.get<boolean>('useNearestConfigFile', false),
+            pathMapping: this.get<Record<string, string>>('pathMapping', {}),
         };
     }
 }

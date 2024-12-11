@@ -20,14 +20,28 @@
     ],
     "main": "./out/main",
     "contributes": {
-        "commands": [],
         "configuration": {
-            "title": "Codeception Test Explorer",
+            "title": "Codeception Test Runner",
             "properties": {
+                "codeception.viewMode": {
+                    "type": "string",
+                    "enum": ["suites", "directories"],
+                    "enumDescriptions": [
+                        "Group tests by their test suites",
+                        "Group tests by their directory structure"
+                    ],
+                    "default": "suites",
+                    "description": "How to organize tests in the Test Explorer"
+                },
                 "codeception.testFilePattern": {
                     "type": "string",
                     "default": "**/*{Cest,Test}.php",
                     "description": "Glob pattern to match test files"
+                },
+                "codeception.configFilePattern": {
+                    "type": "string",
+                    "default": "**/codeception*.{yml,yaml}",
+                    "description": "Glob pattern to match Codeception configuration files"
                 },
                 "codeception.codecept": {
                     "type": "string",
@@ -55,7 +69,8 @@
                         "type": "string"
                     },
                     "default": [
-                        "--debug"
+                        "--debug",
+                        "--steps"
                     ],
                     "description": "Arguments to pass when running tests in debug mode"
                 },
@@ -91,15 +106,7 @@
                 "codeception.useNearestConfigFile": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Use nearest config file instead of the root config file"
-                },
-                "codeception.env": {
-                    "type": "object",
-                    "default": {},
-                    "markdownDescription": "Environment variables to set when running tests, e.g. `{'XDEBUG_MODE': 'coverage'}`",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
+                    "description": "Use the nearest codeception.yml/yaml file relative to the test file"
                 },
                 "codeception.coverage.htmlFilePath": {
                     "type": "string",
@@ -114,7 +121,10 @@
                 "codeception.pathMapping": {
                     "type": "object",
                     "default": {},
-                    "markdownDescription": "remote to local path mapping, ex.`{\"/data\": \"${workspaceFolder}\"}`"
+                    "markdownDescription": "remote to local path mapping for coverage reports",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 }
             }
         }
@@ -124,15 +134,20 @@
         "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/main.js --external:vscode --format=cjs --platform=node",
         "esbuild": "npm run esbuild-base -- --sourcemap",
         "esbuild-watch": "npm run esbuild-base -- --sourcemap --watch",
-        "watch": "npm run esbuild"
+        "watch": "npm run esbuild",
+        "lint": "eslint --fix src --config=eslint.config.cjs"
     },
     "devDependencies": {
+        "@stylistic/eslint-plugin": "^2.12.1",
         "@types/node": "^22.10.1",
         "@types/vscode": "^1.90.0",
+        "@typescript-eslint/eslint-plugin": "^8.18.0",
         "esbuild": "^0.24.0",
+        "eslint": "^9.16.0",
         "typescript": "^5.7.2"
     },
     "dependencies": {
+        "doc-parser": "^0.4.9",
         "execa": "^9.5.2",
         "fast-xml-parser": "^4.5.0",
         "find-up": "^7.0.0",

@@ -1,29 +1,12 @@
-import { CodeceptionConfig } from '../types';
-
-export interface EnvironmentVariables {
-    [key: string]: string | undefined;
-}
+import { ExtensionConfig } from '../types';
 
 export class EnvironmentManager {
-    private readonly defaultEnvVars: EnvironmentVariables = {
-        XDEBUG_MODE: 'coverage'
-    };
+    constructor(private readonly config: ExtensionConfig) {}
 
-    constructor(private config: CodeceptionConfig) {}
-
-    public getEnvironmentVariables(): EnvironmentVariables {
+    public getEnvironment(): Record<string, string> {
         return {
-            ...process.env,
-            ...this.defaultEnvVars,
-            ...this.config.envVars
-        };
-    }
-
-    public getCoverageEnvironment(): EnvironmentVariables {
-        const env = this.getEnvironmentVariables();
-        return {
-            ...env,
-            XDEBUG_MODE: env.XDEBUG_MODE || this.defaultEnvVars.XDEBUG_MODE
+            PATH: process.env.PATH || '',
+            // Add any other environment variables needed for Codeception
         };
     }
 }
